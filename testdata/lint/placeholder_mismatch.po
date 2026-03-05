@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ru\n"
+
+msgid "Welcome %s"
+msgstr "Привет %d"
+
+msgid "%d file"
+msgid_plural "%d files"
+msgstr[0] "%d файл"
+msgstr[1] "%s файлов"
+
+msgid "One car"
+msgid_plural "Many cars"
+msgstr[0] "Одна машина"

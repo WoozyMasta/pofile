@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ru\n"
+
+# translator
+#. extracted
+#: app/file.cpp:10
+#, fuzzy, c-format
+#| msgid "Old value"
+domain "ui"
+msgctxt "key.ctx"
+msgid "One file"
+msgid_plural "Many files"
+msgstr[0] "Один файл"
+msgstr[1] "Много файлов"
