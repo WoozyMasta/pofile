@@ -13,13 +13,13 @@ and this project adheres to [Semantic Versioning][].
 ### Removed
 -->
 
-## [0.1.0][] - 2026-03-05
+## [0.1.1][] - 2026-03-05
 
 ### Added
 
 * First public release
 
-[0.1.0]: https://github.com/WoozyMasta/pofile/tree/v0.1.0
+[0.1.1]: https://github.com/WoozyMasta/pofile/tree/v0.1.1
 
 <!--links-->
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
