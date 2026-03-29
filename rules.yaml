@@ -1,0 +1,133 @@
+modules:
+  - id: pofile
+    name: PO File
+    description: Lint rules for Gettext PO parsing and semantic checks.
+rules:
+  - id: pofile.lint.duplicate-domain-msgctxt-msgid-entry-key
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2001
+    message: duplicate `domain/msgctxt/msgid` entry key
+    description: More than one entry has same `domain` + `msgctxt` + `msgid` key. Keep single canonical entry per key.
+    default_severity: error
+  - id: pofile.lint.entry-has-empty-msgid-value
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2002
+    message: entry has empty `msgid` value
+    description: Entry is present but source key is empty. Remove broken entry or fill valid `msgid` value.
+    default_severity: error
+  - id: pofile.lint.msgstr-n-present-but-msgid-plural-is-missing
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2003
+    message: '`msgstr[n]` present but `msgid_plural` is missing'
+    description: Plural translations require plural source form. Add `msgid_plural` when `msgstr[1]` or higher indexes are present.
+    default_severity: warning
+  - id: pofile.lint.msgid-plural-present-but-plural-msgstr-n-is-incomplete
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2004
+    message: '`msgid_plural` present but plural `msgstr[n]` is incomplete'
+    description: Plural source form exists but translated plural slots are incomplete. Add at least `msgstr[1]` and other required indexes for locale rules.
+    default_severity: warning
+  - id: pofile.lint.plural-indexes-have-gap
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2005
+    message: plural indexes have gap
+    description: Plural entry has missing `msgstr[n]` between existing indexes. Use continuous index range without holes.
+    default_severity: warning
+  - id: pofile.lint.msgstr-n-count-mismatches-plural-forms
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2006
+    message: '`msgstr[n]` count mismatches `Plural-Forms`'
+    description: '`Plural-Forms` header declares `nplurals`, but entry translations do not match expected plural slot count.'
+    default_severity: warning
+  - id: pofile.lint.duplicate-header-key
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2007
+    message: duplicate header key
+    description: Header contains same key more than once. Keep one canonical key/value entry to avoid parser-dependent behavior.
+    default_severity: warning
+  - id: pofile.lint.translations-exist-but-language-header-is-empty
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2008
+    message: translations exist but `Language` header is empty
+    description: File contains translated strings but header does not declare target language.
+    default_severity: warning
+  - id: pofile.lint.printf-placeholders-mismatch
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2009
+    message: printf placeholders mismatch
+    description: Set of printf-style verbs differs between source and translated string. Runtime formatting may fail or substitute wrong arguments.
+    default_severity: warning
+  - id: pofile.lint.entry-has-empty-translation-text
+    module: pofile
+    scope: lint
+    scope_description: PO semantic lint diagnostics.
+    code: PO2010
+    message: entry has empty translation text
+    description: Translated entry contains empty `msgstr` value. Enable this check only when empty translations should be treated as potential issues.
+    default_severity: warning
+  - id: pofile.parse.directive-value-must-be-quoted
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1001
+    message: directive value must be quoted
+    description: PO directives such as `msgid`, `msgstr`, `msgctxt`, and `msgid_plural` must use quoted string value on the same logical line.
+    default_severity: error
+  - id: pofile.parse.unknown-po-directive-or-malformed-line
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1002
+    message: unknown PO directive or malformed line
+    description: Parser found non-empty line that is not recognized as PO keyword, comment, or valid continuation content.
+    default_severity: error
+  - id: pofile.parse.continuation-string-is-outside-active-field
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1003
+    message: continuation string is outside active field
+    description: String continuation line must follow active field (`msgid`, `msgstr`, `msgctxt`, or `msgid_plural`) and cannot appear standalone.
+    default_severity: error
+  - id: pofile.parse.header-metadata-line-is-malformed
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1004
+    message: '`header` metadata line is malformed'
+    description: '`header` metadata line must follow supported syntax with valid key/value shape for this parser.'
+    default_severity: error
+  - id: pofile.parse.msgstr-n-index-must-be-non-negative-integer
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1005
+    message: '`msgstr[n]` index must be non-negative integer'
+    description: Plural translation form must use integer index notation `msgstr[n]` with non-negative numeric `n`.
+    default_severity: error
+  - id: pofile.parse.entry-is-missing-required-msgid
+    module: pofile
+    scope: parse
+    scope_description: PO parser diagnostics.
+    code: PO1006
+    message: entry is missing required `msgid`
+    description: Every non-obsolete PO entry must contain source identifier `msgid`.
+    default_severity: error

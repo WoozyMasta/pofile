@@ -67,23 +67,11 @@ if err != nil {
 }
 _ = catalog
 for _, d := range diagnostics {
-    // d.Code, d.Severity, d.Position, d.Span
+    // d.Code, d.Severity, d.Start, d.End
 }
 ```
 
-## Lint Rules
+## Lint Documentation
 
-`LintDocument` and `LintDocumentWithOptions` emit diagnostics with codes:
-
-* `PO2000`: input document is nil
-* `PO2001`: duplicate `domain/context/msgid` entry
-* `PO2002`: `msgstr[n]` exists, but `msgid_plural` is missing
-* `PO2003`: translations exist, but `Language` header is empty
-* `PO2004`: entry has empty `msgid`
-* `PO2005`: printf-like placeholders mismatch between source and translation
-* `PO2006`: `msgid_plural` exists, but `msgstr[n>0]` is missing
-
-Severity policy:
-
-* `basic` mode: non-critical checks are warnings
-* `strict` mode: warnings are upgraded to errors
+Machine-readable rules registry: [rules.yaml](rules.yaml)  
+Human-readable rules reference: [RULES.md](RULES.md)
