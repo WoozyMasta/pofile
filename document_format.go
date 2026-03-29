@@ -45,7 +45,7 @@ func normalizeWriteOptions(options *WriteOptions) WriteOptions {
 	if options == nil {
 		return WriteOptions{
 			Mode:        WriteModePreserve,
-			HeaderOrder: append([]string(nil), headerOrder...),
+			HeaderOrder: headerOrder,
 		}
 	}
 
@@ -54,7 +54,7 @@ func normalizeWriteOptions(options *WriteOptions) WriteOptions {
 		out.Mode = WriteModePreserve
 	}
 	if len(out.HeaderOrder) == 0 {
-		out.HeaderOrder = append([]string(nil), headerOrder...)
+		out.HeaderOrder = headerOrder
 	}
 
 	return out
@@ -85,8 +85,9 @@ func writeDocumentHeader(builder *strings.Builder, document *Document, options W
 
 // writeDocumentEntries writes entries in selected order.
 func writeDocumentEntries(builder *strings.Builder, entries []*Entry, options WriteOptions) {
-	ordered := cloneEntries(entries)
+	ordered := entries
 	if options.SortEntries || options.Mode == WriteModeCanonical {
+		ordered = cloneEntries(entries)
 		sort.SliceStable(ordered, func(i, j int) bool {
 			left := ordered[i]
 			right := ordered[j]

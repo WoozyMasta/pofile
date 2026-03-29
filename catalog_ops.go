@@ -14,13 +14,29 @@ import (
 	"strconv"
 )
 
+const validateSeenSmallLimit = 8
+
+// validateSeenEntry stores message identity for small-catalog duplicate checks.
+type validateSeenEntry struct {
+	domain  string
+	context string
+	id      string
+}
+
 // Validate checks catalog structural consistency.
 func (c *Catalog) Validate() error {
 	if c == nil {
 		return ErrNilCatalog
 	}
 
-	seen := make(map[string]struct{}, len(c.Messages))
+	useMap := len(c.Messages) > validateSeenSmallLimit
+	var seenMap map[string]struct{}
+	var seenSmall [validateSeenSmallLimit]validateSeenEntry
+	seenCount := 0
+	if useMap {
+		seenMap = make(map[string]struct{}, len(c.Messages))
+	}
+
 	for index, message := range c.Messages {
 		if message == nil {
 			return fmt.Errorf("messages[%d]: %w", index, ErrNilMessage)
@@ -29,8 +45,30 @@ func (c *Catalog) Validate() error {
 			return fmt.Errorf("messages[%d]: %w", index, ErrMessageIDRequired)
 		}
 
-		key := message.Domain + "\x00" + message.Context + "\x00" + message.ID
-		if _, ok := seen[key]; ok {
+		if useMap {
+			key := message.Domain + "\x00" + message.Context + "\x00" + message.ID
+			if _, ok := seenMap[key]; ok {
+				return fmt.Errorf(
+					"messages[%d] (%q, %q, %q): %w",
+					index,
+					message.Domain,
+					message.Context,
+					message.ID,
+					ErrDuplicateMessage,
+				)
+			}
+			seenMap[key] = struct{}{}
+			continue
+		}
+
+		for seenIndex := 0; seenIndex < seenCount; seenIndex++ {
+			item := seenSmall[seenIndex]
+			if item.domain != message.Domain ||
+				item.context != message.Context ||
+				item.id != message.ID {
+				continue
+			}
+
 			return fmt.Errorf(
 				"messages[%d] (%q, %q, %q): %w",
 				index,
@@ -40,7 +78,13 @@ func (c *Catalog) Validate() error {
 				ErrDuplicateMessage,
 			)
 		}
-		seen[key] = struct{}{}
+
+		seenSmall[seenCount] = validateSeenEntry{
+			domain:  message.Domain,
+			context: message.Context,
+			id:      message.ID,
+		}
+		seenCount++
 	}
 
 	return nil

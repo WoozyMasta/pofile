@@ -54,6 +54,23 @@ type lintSettings struct {
 	CheckEmptyTranslations bool
 }
 
+// lintSeenSmallLimit bounds stack-based duplicate checks for small documents.
+const lintSeenSmallLimit = 8
+
+// seenHeader stores normalized header key and first seen position.
+type seenHeader struct {
+	key      string
+	position Position
+}
+
+// seenEntry stores message identity tuple and first seen position.
+type seenEntry struct {
+	domain   string
+	context  string
+	id       string
+	position Position
+}
+
 // LintDocument runs semantic checks and returns lintkit diagnostics.
 func LintDocument(document *Document) ([]lint.Diagnostic, error) {
 	return LintDocumentWithOptions(document, nil)
@@ -69,9 +86,24 @@ func LintDocumentWithOptions(
 		return nil, ErrNilDocument
 	}
 
-	diagnostics := make([]lint.Diagnostic, 0)
-	seenEntries := make(map[string]Position, len(document.Entries))
-	seenHeaders := make(map[string]Position, len(document.Headers))
+	var diagnostics []lint.Diagnostic
+	useHeaderMap := len(document.Headers) > lintSeenSmallLimit
+	useEntryMap := len(document.Entries) > lintSeenSmallLimit
+
+	var seenHeadersMap map[string]Position
+	var seenEntriesMap map[string]Position
+	var seenHeadersSmall [lintSeenSmallLimit]seenHeader
+	var seenEntriesSmall [lintSeenSmallLimit]seenEntry
+	seenHeadersCount := 0
+	seenEntriesCount := 0
+
+	if useHeaderMap {
+		seenHeadersMap = make(map[string]Position, len(document.Headers))
+	}
+	if useEntryMap {
+		seenEntriesMap = make(map[string]Position, len(document.Entries))
+	}
+
 	hasAnyTranslation := false
 	expectedPluralSlots, hasExpectedPluralSlots := parseNPlurals(
 		document.HeaderValue("Plural-Forms"),
@@ -83,14 +115,46 @@ func LintDocumentWithOptions(
 			continue
 		}
 
-		if first, ok := seenHeaders[normalizedKey]; ok {
+		if useHeaderMap {
+			if first, ok := seenHeadersMap[normalizedKey]; ok {
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lintWarningSeverity(settings),
+						CodeLintDuplicateHeader,
+						"duplicate header key (first at line "+
+							strconv.Itoa(first.Line)+")",
+						header.Position,
+					),
+				)
+
+				continue
+			}
+
+			seenHeadersMap[normalizedKey] = header.Position
+			continue
+		}
+
+		duplicateFound := false
+		duplicatePosition := Position{}
+		for index := 0; index < seenHeadersCount; index++ {
+			if seenHeadersSmall[index].key != normalizedKey {
+				continue
+			}
+
+			duplicateFound = true
+			duplicatePosition = seenHeadersSmall[index].position
+			break
+		}
+
+		if duplicateFound {
 			diagnostics = append(
 				diagnostics,
 				newLintDiagnostic(
 					lintWarningSeverity(settings),
 					CodeLintDuplicateHeader,
 					"duplicate header key (first at line "+
-						strconv.Itoa(first.Line)+")",
+						strconv.Itoa(duplicatePosition.Line)+")",
 					header.Position,
 				),
 			)
@@ -98,7 +162,11 @@ func LintDocumentWithOptions(
 			continue
 		}
 
-		seenHeaders[normalizedKey] = header.Position
+		seenHeadersSmall[seenHeadersCount] = seenHeader{
+			key:      normalizedKey,
+			position: header.Position,
+		}
+		seenHeadersCount++
 	}
 
 	for _, entry := range document.Entries {
@@ -118,20 +186,58 @@ func LintDocumentWithOptions(
 			continue
 		}
 
-		key := entry.Domain + "\x00" + entry.Context + "\x00" + entry.ID
-		if first, ok := seenEntries[key]; ok {
-			diagnostics = append(
-				diagnostics,
-				newLintDiagnostic(
-					lint.SeverityError,
-					CodeLintDuplicateEntry,
-					"duplicate domain/context/msgid entry (first at line "+
-						strconv.Itoa(first.Line)+")",
-					entry.Position,
-				),
-			)
+		if useEntryMap {
+			key := entry.Domain + "\x00" + entry.Context + "\x00" + entry.ID
+			if first, ok := seenEntriesMap[key]; ok {
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lint.SeverityError,
+						CodeLintDuplicateEntry,
+						"duplicate domain/context/msgid entry (first at line "+
+							strconv.Itoa(first.Line)+")",
+						entry.Position,
+					),
+				)
+			} else {
+				seenEntriesMap[key] = entry.Position
+			}
 		} else {
-			seenEntries[key] = entry.Position
+			duplicateFound := false
+			duplicatePosition := Position{}
+			for index := 0; index < seenEntriesCount; index++ {
+				item := seenEntriesSmall[index]
+				if item.domain != entry.Domain ||
+					item.context != entry.Context ||
+					item.id != entry.ID {
+					continue
+				}
+
+				duplicateFound = true
+				duplicatePosition = item.position
+				break
+			}
+
+			if duplicateFound {
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lint.SeverityError,
+						CodeLintDuplicateEntry,
+						"duplicate domain/context/msgid entry (first at line "+
+							strconv.Itoa(duplicatePosition.Line)+")",
+						entry.Position,
+					),
+				)
+			} else {
+				seenEntriesSmall[seenEntriesCount] = seenEntry{
+					domain:   entry.Domain,
+					context:  entry.Context,
+					id:       entry.ID,
+					position: entry.Position,
+				}
+				seenEntriesCount++
+			}
 		}
 
 		for _, value := range entry.Translations {
