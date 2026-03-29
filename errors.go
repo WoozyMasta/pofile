@@ -4,7 +4,11 @@
 
 package pofile
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/woozymasta/lintkit/lint"
+)
 
 var (
 	// ErrNilCatalog indicates that a catalog argument is nil.
@@ -27,4 +31,7 @@ var (
 
 	// ErrDuplicateEntryKey indicates duplicate domain+context+id in document index.
 	ErrDuplicateEntryKey = errors.New("duplicate entry key")
+
+	// ErrNilLintRuleRegistrar indicates nil lint rule registrar in registration.
+	ErrNilLintRuleRegistrar = lint.ErrNilRuleRegistrar
 )

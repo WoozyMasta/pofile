@@ -12,6 +12,9 @@ The package exposes two data layers:
 Use ParseFile or ParseDir for semantic flows. Use ParseDocumentFile and
 ParseDocumentDir when you need source-preserving round-trip behavior.
 Use ParseCatalogWithDiagnostics for tolerant parse with structured findings.
+Lint and parse diagnostics use stable machine-readable codes.
+The module includes lintkit integration for diagnostics metadata and
+rule-provider registration.
 
 Scope is intentionally narrow:
   - text .po/.pot only

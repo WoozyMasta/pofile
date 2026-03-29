@@ -5,19 +5,16 @@
 package pofile
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/woozymasta/lintkit/lint"
 )
 
 const (
-	diagCodeLintDuplicateEntry  = "PO2001"
-	diagCodeLintPluralShape     = "PO2002"
-	diagCodeLintMissingLanguage = "PO2003"
-	diagCodeLintEntryWithoutID  = "PO2004"
-	diagCodeLintPrintfMismatch  = "PO2005"
-	diagCodeLintPluralMissing   = "PO2006"
+	// lintPublicCodePrefix is exported numeric code prefix for pofile diagnostics.
+	lintPublicCodePrefix = "PO"
 )
 
 // LintMode defines lint strictness profile.
@@ -42,19 +39,23 @@ type LintOptions struct {
 	// CheckPlaceholders enables printf-like placeholder checks.
 	CheckPlaceholders *bool `json:"check_placeholders,omitempty" yaml:"check_placeholders,omitempty"`
 
+	// CheckEmptyTranslations enables warning for empty msgstr values.
+	CheckEmptyTranslations *bool `json:"check_empty_translations,omitempty" yaml:"check_empty_translations,omitempty"`
+
 	// Mode controls warning/error severity policy.
 	Mode LintMode `json:"mode,omitempty" yaml:"mode,omitempty"`
 }
 
 type lintSettings struct {
-	Mode                LintMode
-	CheckLanguageHeader bool
-	CheckPluralShape    bool
-	CheckPlaceholders   bool
+	Mode                   LintMode
+	CheckLanguageHeader    bool
+	CheckPluralShape       bool
+	CheckPlaceholders      bool
+	CheckEmptyTranslations bool
 }
 
-// LintDocument runs basic semantic checks and returns diagnostics.
-func LintDocument(document *Document) []Diagnostic {
+// LintDocument runs semantic checks and returns lintkit diagnostics.
+func LintDocument(document *Document) ([]lint.Diagnostic, error) {
 	return LintDocumentWithOptions(document, nil)
 }
 
@@ -62,22 +63,43 @@ func LintDocument(document *Document) []Diagnostic {
 func LintDocumentWithOptions(
 	document *Document,
 	options *LintOptions,
-) []Diagnostic {
+) ([]lint.Diagnostic, error) {
 	settings := normalizeLintOptions(options)
 	if document == nil {
-		return []Diagnostic{
-			newDiagnostic(
-				SeverityError,
-				"PO2000",
-				"document is nil",
-				Position{},
-			),
-		}
+		return nil, ErrNilDocument
 	}
 
-	diagnostics := make([]Diagnostic, 0)
-	seen := make(map[string]Position, len(document.Entries))
+	diagnostics := make([]lint.Diagnostic, 0)
+	seenEntries := make(map[string]Position, len(document.Entries))
+	seenHeaders := make(map[string]Position, len(document.Headers))
 	hasAnyTranslation := false
+	expectedPluralSlots, hasExpectedPluralSlots := parseNPlurals(
+		document.HeaderValue("Plural-Forms"),
+	)
+
+	for _, header := range document.Headers {
+		normalizedKey := normalizeHeaderKey(header.Key)
+		if normalizedKey == "" {
+			continue
+		}
+
+		if first, ok := seenHeaders[normalizedKey]; ok {
+			diagnostics = append(
+				diagnostics,
+				newLintDiagnostic(
+					lintWarningSeverity(settings),
+					CodeLintDuplicateHeader,
+					"duplicate header key (first at line "+
+						strconv.Itoa(first.Line)+")",
+					header.Position,
+				),
+			)
+
+			continue
+		}
+
+		seenHeaders[normalizedKey] = header.Position
+	}
 
 	for _, entry := range document.Entries {
 		if entry == nil {
@@ -86,9 +108,9 @@ func LintDocumentWithOptions(
 		if entry.ID == "" {
 			diagnostics = append(
 				diagnostics,
-				newDiagnostic(
-					SeverityError,
-					diagCodeLintEntryWithoutID,
+				newLintDiagnostic(
+					lint.SeverityError,
+					CodeLintEntryWithoutID,
 					"entry has empty msgid",
 					entry.Position,
 				),
@@ -97,19 +119,19 @@ func LintDocumentWithOptions(
 		}
 
 		key := entry.Domain + "\x00" + entry.Context + "\x00" + entry.ID
-		if first, ok := seen[key]; ok {
+		if first, ok := seenEntries[key]; ok {
 			diagnostics = append(
 				diagnostics,
-				newDiagnostic(
-					SeverityError,
-					diagCodeLintDuplicateEntry,
+				newLintDiagnostic(
+					lint.SeverityError,
+					CodeLintDuplicateEntry,
 					"duplicate domain/context/msgid entry (first at line "+
 						strconv.Itoa(first.Line)+")",
 					entry.Position,
 				),
 			)
 		} else {
-			seen[key] = entry.Position
+			seenEntries[key] = entry.Position
 		}
 
 		for _, value := range entry.Translations {
@@ -119,34 +141,121 @@ func LintDocumentWithOptions(
 			}
 		}
 
+		if settings.CheckEmptyTranslations {
+			for index, value := range entry.Translations {
+				if value != "" {
+					continue
+				}
+
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lintWarningSeverity(settings),
+						CodeLintEmptyTranslation,
+						"empty translation text in msgstr["+
+							strconv.Itoa(index)+"]",
+						entry.Position,
+					),
+				)
+			}
+		}
+
 		hasPluralIndex := false
+		maxPluralIndex := -1
 		for index := range entry.Translations {
 			if index > 0 {
 				hasPluralIndex = true
-				break
+			}
+			if index > maxPluralIndex {
+				maxPluralIndex = index
 			}
 		}
+
 		if settings.CheckPluralShape && entry.IDPlural == "" && hasPluralIndex {
 			diagnostics = append(
 				diagnostics,
-				newDiagnostic(
+				newLintDiagnostic(
 					lintWarningSeverity(settings),
-					diagCodeLintPluralShape,
+					CodeLintPluralShape,
 					"entry has msgstr[n] but no msgid_plural",
 					entry.Position,
 				),
 			)
 		}
+
 		if settings.CheckPluralShape && entry.IDPlural != "" && !hasPluralIndex {
 			diagnostics = append(
 				diagnostics,
-				newDiagnostic(
+				newLintDiagnostic(
 					lintWarningSeverity(settings),
-					diagCodeLintPluralMissing,
+					CodeLintPluralMissing,
 					"entry has msgid_plural but no msgstr[n>0]",
 					entry.Position,
 				),
 			)
+		}
+
+		if settings.CheckPluralShape && entry.IDPlural != "" && maxPluralIndex > 0 {
+			missingIndex := -1
+			for index := 0; index <= maxPluralIndex; index++ {
+				if _, ok := entry.Translations[index]; ok {
+					continue
+				}
+
+				missingIndex = index
+				break
+			}
+
+			if missingIndex >= 0 {
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lintWarningSeverity(settings),
+						CodeLintPluralIndexGap,
+						"plural index gap at msgstr["+
+							strconv.Itoa(missingIndex)+"]",
+						entry.Position,
+					),
+				)
+			}
+		}
+
+		if settings.CheckPluralShape &&
+			entry.IDPlural != "" &&
+			hasExpectedPluralSlots &&
+			hasPluralIndex {
+			missingExpected := false
+			for index := range expectedPluralSlots {
+				if _, ok := entry.Translations[index]; ok {
+					continue
+				}
+
+				missingExpected = true
+				break
+			}
+
+			hasExtra := false
+			for index := range entry.Translations {
+				if index < expectedPluralSlots {
+					continue
+				}
+
+				hasExtra = true
+				break
+			}
+
+			if missingExpected || hasExtra {
+				diagnostics = append(
+					diagnostics,
+					newLintDiagnostic(
+						lintWarningSeverity(settings),
+						CodeLintPluralFormsMismatch,
+						"plural slots mismatch `Plural-Forms` nplurals="+
+							strconv.Itoa(expectedPluralSlots),
+						entry.Position,
+					),
+				)
+			}
 		}
 
 		if settings.CheckPlaceholders {
@@ -162,47 +271,40 @@ func LintDocumentWithOptions(
 		document.HeaderValue("Language") == "" {
 		diagnostics = append(
 			diagnostics,
-			newDiagnostic(
+			newLintDiagnostic(
 				lintWarningSeverity(settings),
-				diagCodeLintMissingLanguage,
+				CodeLintMissingLanguage,
 				"document has translations but Language header is empty",
 				Position{Line: 1, Column: 1, Offset: 0},
 			),
 		)
 	}
 
-	return diagnostics
+	return diagnostics, nil
 }
 
 // ValidateDocument runs strict lint and returns one aggregated error.
 func ValidateDocument(document *Document) error {
-	diagnostics := LintDocumentWithOptions(document, &LintOptions{
+	diagnostics, err := LintDocumentWithOptions(document, &LintOptions{
 		Mode: LintModeStrict,
 	})
-	for _, diagnostic := range diagnostics {
-		if diagnostic.Severity != SeverityError {
-			continue
-		}
-
-		return fmt.Errorf(
-			"%s at line %d:%d: %s",
-			diagnostic.Code,
-			diagnostic.Position.Line,
-			diagnostic.Position.Column,
-			diagnostic.Message,
-		)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	return lint.ErrorFromDiagnostics(diagnostics, lint.SeverityError)
 }
 
 // lintPrintfPlaceholders checks printf-like placeholder compatibility.
-func lintPrintfPlaceholders(entry *Entry, options lintSettings) []Diagnostic {
+func lintPrintfPlaceholders(
+	entry *Entry,
+	options lintSettings,
+) []lint.Diagnostic {
 	if entry == nil {
 		return nil
 	}
 
-	diagnostics := make([]Diagnostic, 0)
+	diagnostics := make([]lint.Diagnostic, 0)
 	for index, translation := range entry.Translations {
 		source := entry.ID
 		if index > 0 && entry.IDPlural != "" {
@@ -221,9 +323,9 @@ func lintPrintfPlaceholders(entry *Entry, options lintSettings) []Diagnostic {
 
 		diagnostics = append(
 			diagnostics,
-			newDiagnostic(
+			newLintDiagnostic(
 				lintWarningSeverity(options),
-				diagCodeLintPrintfMismatch,
+				CodeLintPrintfMismatch,
 				"printf-like placeholders mismatch for msgstr["+
 					strconv.Itoa(index)+"]",
 				entry.Position,
@@ -232,6 +334,46 @@ func lintPrintfPlaceholders(entry *Entry, options lintSettings) []Diagnostic {
 	}
 
 	return diagnostics
+}
+
+// newLintDiagnostic builds one lintkit diagnostic with stable code/rule metadata.
+func newLintDiagnostic(
+	severity lint.Severity,
+	code lint.Code,
+	message string,
+	position Position,
+) lint.Diagnostic {
+	start := lintPosition(position)
+	end := start
+	end.Offset = start.Offset + 1
+
+	return lint.Diagnostic{
+		RuleID:   LintRuleID(code),
+		Code:     publicLintCode(code),
+		Severity: severity,
+		Message:  message,
+		Start:    start,
+		End:      end,
+	}
+}
+
+// lintPosition converts pofile position into lintkit position.
+func lintPosition(position Position) lint.Position {
+	return lint.Position{
+		Line:   position.Line,
+		Column: position.Column,
+		Offset: position.Offset,
+	}
+}
+
+// publicLintCode formats exported lint code token with module prefix.
+func publicLintCode(code lint.Code) string {
+	digits := lint.FormatCode(code)
+	if digits == "" {
+		return ""
+	}
+
+	return lintPublicCodePrefix + digits
 }
 
 // hasPrintfLikeTokens checks whether text looks like it has printf placeholders.
@@ -294,18 +436,20 @@ func signaturesEqual(left, right map[rune]int) bool {
 func normalizeLintOptions(options *LintOptions) lintSettings {
 	if options == nil {
 		return lintSettings{
-			Mode:                LintModeBasic,
-			CheckLanguageHeader: true,
-			CheckPluralShape:    true,
-			CheckPlaceholders:   true,
+			Mode:                   LintModeBasic,
+			CheckLanguageHeader:    true,
+			CheckPluralShape:       true,
+			CheckPlaceholders:      true,
+			CheckEmptyTranslations: false,
 		}
 	}
 
 	out := lintSettings{
-		Mode:                options.Mode,
-		CheckLanguageHeader: boolOption(options.CheckLanguageHeader, true),
-		CheckPluralShape:    boolOption(options.CheckPluralShape, true),
-		CheckPlaceholders:   boolOption(options.CheckPlaceholders, true),
+		Mode:                   options.Mode,
+		CheckLanguageHeader:    boolOption(options.CheckLanguageHeader, true),
+		CheckPluralShape:       boolOption(options.CheckPluralShape, true),
+		CheckPlaceholders:      boolOption(options.CheckPlaceholders, true),
+		CheckEmptyTranslations: boolOption(options.CheckEmptyTranslations, false),
 	}
 	if out.Mode == "" {
 		out.Mode = LintModeBasic
@@ -315,12 +459,12 @@ func normalizeLintOptions(options *LintOptions) lintSettings {
 }
 
 // lintWarningSeverity maps warning checks to severity by mode.
-func lintWarningSeverity(options lintSettings) Severity {
+func lintWarningSeverity(options lintSettings) lint.Severity {
 	if options.Mode == LintModeStrict {
-		return SeverityError
+		return lint.SeverityError
 	}
 
-	return SeverityWarning
+	return lint.SeverityWarning
 }
 
 // boolOption resolves optional bool with default value.
@@ -330,4 +474,34 @@ func boolOption(value *bool, fallback bool) bool {
 	}
 
 	return *value
+}
+
+// normalizeHeaderKey normalizes header keys for duplicate detection.
+func normalizeHeaderKey(key string) string {
+	return strings.ToLower(strings.TrimSpace(key))
+}
+
+// parseNPlurals extracts nplurals count from Plural-Forms header value.
+func parseNPlurals(value string) (int, bool) {
+	if value == "" {
+		return 0, false
+	}
+
+	parts := strings.SplitSeq(value, ";")
+	for part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if !strings.HasPrefix(strings.ToLower(trimmed), "nplurals=") {
+			continue
+		}
+
+		rawCount := strings.TrimSpace(trimmed[len("nplurals="):])
+		count, err := strconv.Atoi(rawCount)
+		if err != nil || count <= 0 {
+			return 0, false
+		}
+
+		return count, true
+	}
+
+	return 0, false
 }

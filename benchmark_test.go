@@ -80,6 +80,8 @@ func BenchmarkParseAndLint(b *testing.B) {
 		if err != nil {
 			b.Fatalf("ParseDocument error: %v", err)
 		}
-		_ = LintDocument(document)
+		if _, err := LintDocument(document); err != nil {
+			b.Fatalf("LintDocument error: %v", err)
+		}
 	}
 }

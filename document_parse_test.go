@@ -6,6 +6,8 @@ package pofile
 
 import (
 	"testing"
+
+	"github.com/woozymasta/lintkit/lint"
 )
 
 func TestParseDocumentWithDiagnostics(t *testing.T) {
@@ -69,26 +71,27 @@ func TestParseDocumentSyntaxErrorPosition(t *testing.T) {
 
 	found := false
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code != diagCodeParseMissingQuote {
+		code, ok := lint.ParsePublicCode(diagnostic.Code)
+		if !ok || code != CodeParseMissingQuote {
 			continue
 		}
 		found = true
-		if diagnostic.Position.Line != 5 {
-			t.Fatalf("line = %d, want 5", diagnostic.Position.Line)
+		if diagnostic.Start.Line != 5 {
+			t.Fatalf("line = %d, want 5", diagnostic.Start.Line)
 		}
-		if diagnostic.Span.StartOffset < 0 {
-			t.Fatalf("span start offset = %d, want >= 0", diagnostic.Span.StartOffset)
+		if diagnostic.Start.Offset < 0 {
+			t.Fatalf("start offset = %d, want >= 0", diagnostic.Start.Offset)
 		}
-		if diagnostic.Span.EndOffset <= diagnostic.Span.StartOffset {
+		if diagnostic.End.Offset <= diagnostic.Start.Offset {
 			t.Fatalf(
-				"invalid span offsets: start=%d end=%d",
-				diagnostic.Span.StartOffset,
-				diagnostic.Span.EndOffset,
+				"invalid offsets: start=%d end=%d",
+				diagnostic.Start.Offset,
+				diagnostic.End.Offset,
 			)
 		}
 	}
 	if !found {
-		t.Fatalf("missing %s diagnostic in %+v", diagCodeParseMissingQuote, diagnostics)
+		t.Fatalf("missing %d diagnostic in %+v", CodeParseMissingQuote, diagnostics)
 	}
 }
 

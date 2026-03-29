@@ -12,16 +12,12 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/woozymasta/lintkit/lint"
 )
 
 const (
-	diagCodeParseMissingQuote    = "PO1001"
-	diagCodeParseUnknownLine     = "PO1002"
-	diagCodeParseBadContinuation = "PO1003"
-	diagCodeParseBadHeader       = "PO1004"
-	diagCodeParseBadMsgStrIndex  = "PO1005"
-	diagCodeParseMissingMsgID    = "PO1006"
-	parseBufferSize              = 512
+	parseBufferSize = 512
 )
 
 // ParseDocument parses PO/POT bytes into lossless document.
@@ -44,7 +40,7 @@ func ParseDocument(data []byte) (*Document, error) {
 func ParseDocumentWithOptions(
 	data []byte,
 	options ParseOptions,
-) (*Document, []Diagnostic, error) {
+) (*Document, []lint.Diagnostic, error) {
 	return ParseDocumentReaderWithOptions(bytes.NewReader(data), options)
 }
 
@@ -68,13 +64,13 @@ func ParseDocumentReader(reader io.Reader) (*Document, error) {
 func ParseDocumentReaderWithOptions(
 	reader io.Reader,
 	options ParseOptions,
-) (*Document, []Diagnostic, error) {
+) (*Document, []lint.Diagnostic, error) {
 	state := parseState{
 		document:      NewDocument(),
 		options:       options,
 		currentDomain: "",
 		pending:       make([]Comment, 0),
-		diagnostics:   make([]Diagnostic, 0),
+		diagnostics:   make([]lint.Diagnostic, 0),
 	}
 
 	br := bufio.NewReaderSize(reader, parseBufferSize)
@@ -136,7 +132,7 @@ type parseState struct {
 	pendingPrev   previousValues
 	section       string
 	currentDomain string
-	diagnostics   []Diagnostic
+	diagnostics   []lint.Diagnostic
 	pending       []Comment
 	sectionIndex  int
 	line          int
@@ -213,7 +209,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				"domain must contain quoted value",
 				position,
 			)
@@ -226,7 +222,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				`msgctxt must contain quoted value`,
 				position,
 			)
@@ -240,7 +236,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				`msgid_plural must contain quoted value`,
 				position,
 			)
@@ -254,7 +250,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				`msgid must contain quoted value`,
 				position,
 			)
@@ -268,7 +264,7 @@ func (s *parseState) parseDirective(
 		index, value, ok := parseIndexedMsgStr(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseBadMsgStrIndex,
+				CodeParseBadMsgStrIndex,
 				`invalid msgstr[n] form`,
 				position,
 			)
@@ -283,7 +279,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				`msgstr must contain quoted value`,
 				position,
 			)
@@ -296,7 +292,7 @@ func (s *parseState) parseDirective(
 	case strings.HasPrefix(trimmed, `"`):
 		if s.current == nil || s.section == "" {
 			s.addDiagnostic(
-				diagCodeParseBadContinuation,
+				CodeParseBadContinuation,
 				"continuation string has no active section",
 				position,
 			)
@@ -306,7 +302,7 @@ func (s *parseState) parseDirective(
 		value, ok := extractQuotedValueChecked(trimmed)
 		if !ok {
 			s.addDiagnostic(
-				diagCodeParseMissingQuote,
+				CodeParseMissingQuote,
 				`continuation line must be quoted`,
 				position,
 			)
@@ -316,7 +312,7 @@ func (s *parseState) parseDirective(
 
 	default:
 		s.addDiagnostic(
-			diagCodeParseUnknownLine,
+			CodeParseUnknownLine,
 			"unknown PO directive",
 			position,
 		)
@@ -424,7 +420,7 @@ func (s *parseState) addMissingMsgIDDiagnostics() {
 		}
 
 		s.addDiagnostic(
-			diagCodeParseMissingMsgID,
+			CodeParseMissingMsgID,
 			"entry has no msgid",
 			entry.Position,
 		)
@@ -433,13 +429,13 @@ func (s *parseState) addMissingMsgIDDiagnostics() {
 
 // addDiagnostic appends one diagnostic.
 func (s *parseState) addDiagnostic(
-	code string,
+	code lint.Code,
 	message string,
 	position Position,
 ) {
 	s.diagnostics = append(
 		s.diagnostics,
-		newDiagnostic(SeverityError, code, message, position),
+		newLintDiagnostic(lint.SeverityError, code, message, position),
 	)
 }
 
@@ -640,9 +636,9 @@ func extractQuotedValueChecked(line string) (string, bool) {
 }
 
 // hasErrorDiagnostics reports whether diagnostics list contains errors.
-func hasErrorDiagnostics(diagnostics []Diagnostic) bool {
+func hasErrorDiagnostics(diagnostics []lint.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Severity == SeverityError {
+		if diagnostic.Severity == lint.SeverityError {
 			return true
 		}
 	}
@@ -651,17 +647,17 @@ func hasErrorDiagnostics(diagnostics []Diagnostic) bool {
 }
 
 // formatParseError formats top-level parse failure.
-func formatParseError(diagnostics []Diagnostic) error {
+func formatParseError(diagnostics []lint.Diagnostic) error {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Severity != SeverityError {
+		if diagnostic.Severity != lint.SeverityError {
 			continue
 		}
 
 		return fmt.Errorf(
 			"%s at line %d:%d: %s",
 			diagnostic.Code,
-			diagnostic.Position.Line,
-			diagnostic.Position.Column,
+			diagnostic.Start.Line,
+			diagnostic.Start.Column,
 			diagnostic.Message,
 		)
 	}

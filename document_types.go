@@ -4,20 +4,8 @@
 
 package pofile
 
-import "strings"
-
-// Severity defines diagnostic level.
-type Severity string
-
-const (
-	// SeverityError indicates hard parse/validation failure.
-	SeverityError Severity = "error"
-
-	// SeverityWarning indicates non-fatal consistency issue.
-	SeverityWarning Severity = "warning"
-
-	// SeverityInfo indicates informational message.
-	SeverityInfo Severity = "info"
+import (
+	"strings"
 )
 
 // CommentKind classifies PO comment prefixes.
@@ -59,21 +47,6 @@ type Position struct {
 	Line   int `json:"line" yaml:"line"`
 	Column int `json:"column" yaml:"column"`
 	Offset int `json:"offset" yaml:"offset"`
-}
-
-// Span represents a byte range in source text.
-type Span struct {
-	StartOffset int `json:"start_offset" yaml:"start_offset"`
-	EndOffset   int `json:"end_offset" yaml:"end_offset"`
-}
-
-// Diagnostic describes one parser/linter issue.
-type Diagnostic struct {
-	Severity Severity `json:"severity" yaml:"severity"`
-	Code     string   `json:"code" yaml:"code"`
-	Message  string   `json:"message" yaml:"message"`
-	Position Position `json:"position" yaml:"position"`
-	Span     Span     `json:"span" yaml:"span"`
 }
 
 // Comment stores typed PO comment line.

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/woozymasta/lintkit/lint"
 )
 
 // Parse decodes PO/POT bytes into semantic catalog.
@@ -37,7 +39,7 @@ func ParseReader(reader io.Reader) (*Catalog, error) {
 func ParseCatalogWithDiagnostics(
 	data []byte,
 	options ParseOptions,
-) (*Catalog, []Diagnostic, error) {
+) (*Catalog, []lint.Diagnostic, error) {
 	document, diagnostics, err := ParseDocumentWithOptions(data, options)
 	if err != nil && document == nil {
 		return nil, diagnostics, err
